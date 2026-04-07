@@ -12,7 +12,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama3-8b-8192')
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
 
 if not GROQ_API_KEY:
     raise ValueError("No GROQ_API_KEY found in .env file. Get one free at https://console.groq.com")
@@ -41,7 +41,7 @@ def chat():
         payload = {
             "model": GROQ_MODEL,
             "messages": [
-                {"role": "system", "content": "You are a helpful, concise AI assistant."},
+                {"role": "system", "content": "You are Lumina AI. Be remarkably human, witty, and engaging. For short inputs, stay brief and charming. For complex ones, provide a Masterclass."},
                 {"role": "user", "content": prompt}
             ]
         }

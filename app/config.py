@@ -22,7 +22,7 @@ def _load_system_prompt() -> str:
 class Config:
     # Groq LLM Settings
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     GROQ_API_URL: str = "https://api.groq.com/openai/v1/chat/completions"
 
     # System Prompt — loaded from app/prompts/system.txt
