@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+# Enable CORS for all routes under /api/ with a wildcard origin
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
