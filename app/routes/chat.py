@@ -365,6 +365,99 @@ RULES:
         return jsonify({"error": str(e)}), 500
 
 
+@chat_bp.route("/flashcards", methods=["POST"])
+def flashcards():
+    """
+    POST /api/flashcards
+    Request body: { "prompt": "Generate flashcards on Python decorators" }
+    Response:     { "flashcards": true, "title": "...", "cards": [ { "id":1, "front": "...", "back": "..." } ] }
+    """
+    import json as json_lib
+    import re
+
+    data = request.get_json()
+    if not data or "prompt" not in data:
+        return jsonify({"error": "Prompt required."}), 400
+
+    prompt = data["prompt"].strip()
+    if not prompt:
+        return jsonify({"error": "Prompt cannot be empty."}), 400
+
+    # Extract how many cards the user wants (default 8)
+    num_match = re.search(r'(\d+)', prompt)
+    num_cards = int(num_match.group(1)) if num_match else 8
+    num_cards = max(4, min(num_cards, 20))  # clamp 4–20
+
+    flashcard_system_prompt = f"""You are a spaced-repetition flashcard expert. You MUST output ONLY valid JSON — no extra text, no markdown.
+
+Generate exactly {num_cards} flashcards on the user's topic.
+
+Output this exact JSON structure:
+{{
+  "flashcards": true,
+  "title": "Flashcards: Topic Name",
+  "cards": [
+    {{
+      "id": 1,
+      "front": "Concise question or term (max 15 words)",
+      "back": "Clear, complete answer (2-4 sentences max)"
+    }}
+  ]
+}}
+
+RULES:
+- Generate exactly {num_cards} cards
+- "front" should be a SHORT question, term, or concept trigger (max 15 words)
+- "back" should be a COMPLETE answer with a concrete example if possible (2-4 sentences)
+- Cover the topic progressively from basics to advanced
+- Make cards genuinely educational and memorable
+- Output ONLY the JSON object, nothing else"""
+
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {Config.GROQ_API_KEY}",
+        }
+        payload = {
+            "model": Config.GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": flashcard_system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.65,
+            "max_tokens": 4000,
+            "response_format": {"type": "json_object"},
+        }
+
+        response = requests.post(Config.GROQ_API_URL, headers=headers, json=payload, timeout=45)
+
+        if not response.ok:
+            error_msg = response.json().get("error", {}).get("message", "Groq API error")
+            return jsonify({"error": f"{response.status_code} {error_msg}"}), response.status_code
+
+        raw = response.json()["choices"][0]["message"]["content"].strip()
+
+        try:
+            parsed = json_lib.loads(raw)
+        except json_lib.JSONDecodeError:
+            match = re.search(r'\{[\s\S]*\}', raw)
+            if match:
+                parsed = json_lib.loads(match.group(0))
+            else:
+                return jsonify({"error": "Failed to parse flashcard response from AI."}), 500
+
+        if not isinstance(parsed.get("cards"), list) or len(parsed["cards"]) == 0:
+            return jsonify({"error": "AI returned invalid flashcard structure."}), 500
+
+        parsed["flashcards"] = True
+        return jsonify(parsed)
+
+    except requests.Timeout:
+        return jsonify({"error": "Request timed out. Please try again."}), 504
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @chat_bp.route("/health", methods=["GET"])
 def health():
     """GET /api/health — Returns server status and active config."""
@@ -373,3 +466,4 @@ def health():
         "provider": "Groq",
         "model": Config.GROQ_MODEL,
     })
+
