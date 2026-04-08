@@ -51,15 +51,34 @@ def chat():
     session_id = data.get("session_id", "default")
 
     try:
+        # Perform a quick background search for the user's prompt
+        from duckduckgo_search import DDGS
+        web_context = ""
+        try:
+            with DDGS() as ddgs:
+                results = ddgs.text(prompt, max_results=3)
+                if results:
+                    web_context = "Here is some real-time web context that might be helpful:\n"
+                    for r in results:
+                        web_context += f"- {r.get('title')}: {r.get('body')}\n"
+        except Exception as e:
+            print(f"Chat Web Search Error: {e}")
+
         # Get or create the conversation history for this session
         history = _get_history(session_id)
+
+        # We inject the web context invisibly into this specific request
+        # by appending it to the system prompt for just this turn.
+        dynamic_system_prompt = Config.SYSTEM_PROMPT
+        if web_context:
+            dynamic_system_prompt += "\n\n" + web_context + "\nUse this web context to answer the user if relevant."
 
         # Add the new user message to history
         history.append({"role": "user", "content": prompt})
 
         # Build the full messages array: system prompt + conversation history
         messages_for_api = [
-            {"role": "system", "content": Config.SYSTEM_PROMPT},
+            {"role": "system", "content": dynamic_system_prompt},
             *history
         ]
 
