@@ -58,7 +58,6 @@ def chat():
             with DDGS() as ddgs:
                 results = ddgs.text(prompt, max_results=3)
                 if results:
-                    web_context = "Here is some real-time web context that might be helpful:\n"
                     for r in results:
                         web_context += f"- {r.get('title')}: {r.get('body')}\n"
         except Exception as e:
@@ -68,10 +67,16 @@ def chat():
         history = _get_history(session_id)
 
         # We inject the web context invisibly into this specific request
-        # by appending it to the system prompt for just this turn.
         dynamic_system_prompt = Config.SYSTEM_PROMPT
         if web_context:
-            dynamic_system_prompt += "\n\n" + web_context + "\nUse this web context to answer the user if relevant."
+            dynamic_system_prompt += (
+                f"\n\n--- REAL-TIME WEB SEARCH RESULTS ---\n"
+                f"{web_context}\n"
+                f"------------------------------------\n"
+                f"CRITICAL INSTRUCTION: You now have real-time web access via the search results above. "
+                f"You MUST use the provided search results to directly answer the user. "
+                f"NEVER say 'I am an AI and don't have real-time access' or 'I cannot check the internet' — the web search results above ARE your real-time internet access."
+            )
 
         # Add the new user message to history
         history.append({"role": "user", "content": prompt})
