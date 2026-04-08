@@ -56,10 +56,14 @@ def chat():
         web_context = ""
         try:
             with DDGS() as ddgs:
-                results = ddgs.text(prompt, max_results=3)
+                # Use lite backend to avoid scraping blocks
+                results = ddgs.text(prompt, max_results=3, backend="lite")
                 if results:
                     for r in results:
-                        web_context += f"- {r.get('title')}: {r.get('body')}\n"
+                        title = r.get('title', '')
+                        body = r.get('body', '')
+                        if title or body:
+                            web_context += f"- {title}: {body}\n"
         except Exception as e:
             print(f"Chat Web Search Error: {e}")
 
@@ -73,9 +77,10 @@ def chat():
                 f"\n\n--- REAL-TIME WEB SEARCH RESULTS ---\n"
                 f"{web_context}\n"
                 f"------------------------------------\n"
-                f"CRITICAL INSTRUCTION: You now have real-time web access via the search results above. "
-                f"You MUST use the provided search results to directly answer the user. "
-                f"NEVER say 'I am an AI and don't have real-time access' or 'I cannot check the internet' — the web search results above ARE your real-time internet access."
+                f"You have internet access via the search results above. "
+                f"Synthesize the provided search results to answer the user. "
+                f"Do not apologize or say you don't have real-time access. "
+                f"If the exact answer (like current temperature) is missing from the snippets, DO NOT say you cannot check the internet. Instead, provide the general information from the snippets and answer thoughtfully."
             )
 
         # Add the new user message to history
