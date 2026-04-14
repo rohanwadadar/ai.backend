@@ -1,77 +1,34 @@
-import os
-import requests
-from flask import Flask, request as flask_request, jsonify
+"""
+app.py - Application Factory and Entry Point
+Creates and configures the Flask app instance.
+"""
+from flask import Flask
 from flask_cors import CORS
-from dotenv import load_dotenv
+from config import Config
+from controller import chat_bp
 
-# Load environment variables from .env file
-load_dotenv()
+def create_app() -> Flask:
+    """Factory function — creates a fresh Flask app with all extensions registered."""
+    Config.validate()
+    flask_app = Flask(__name__)
+    
+    # Allow cross-origin requests from the React frontend
+    CORS(flask_app, resources={r"/api/*": {"origins": "*"}})
 
-app = Flask(__name__)
-# Enable CORS for all routes under /api/ with a wildcard origin
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # Register route blueprints
+    flask_app.register_blueprint(chat_bp)
 
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+    return flask_app
 
-if not GROQ_API_KEY:
-    raise ValueError("No GROQ_API_KEY found in .env file. Get one free at https://console.groq.com")
+app = create_app()
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    """
-    Endpoint: POST /api/chat
-    Body: { "prompt": "User message here" }
-    Returns: { "response": "AI reply" }
-    """
-    try:
-        data = flask_request.get_json()
-        if not data or 'prompt' not in data:
-            return jsonify({"error": "No prompt provided"}), 400
-
-        prompt = data['prompt']
-
-        # Groq uses an OpenAI-compatible REST API — very stable, huge free tier
-        API_URL = "https://api.groq.com/openai/v1/chat/completions"
-
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {GROQ_API_KEY}'
-        }
-        payload = {
-            "model": GROQ_MODEL,
-            "messages": [
-                {"role": "system", "content": "You are Lumina AI. Be remarkably human, witty, and engaging. For short inputs, stay brief and charming. For complex ones, provide a Masterclass."},
-                {"role": "user", "content": prompt}
-            ]
-        }
-
-        response = requests.post(API_URL, headers=headers, json=payload)
-
-        if not response.ok:
-            error_data = response.json()
-            error_msg = error_data.get('error', {}).get('message', 'Failed to fetch from Groq')
-            return jsonify({"error": f"{response.status_code} {error_msg}"}), response.status_code
-
-        response_data = response.json()
-        generated_text = response_data['choices'][0]['message']['content']
-
-        return jsonify({"response": generated_text})
-
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/api/health', methods=['GET'])
-def health():
-    return jsonify({"status": "healthy", "model": GROQ_MODEL, "provider": "Groq"})
-
-
-if __name__ == '__main__':
-    masked_key = f"{GROQ_API_KEY[:6]}...{GROQ_API_KEY[-4:]}" if GROQ_API_KEY else "NONE"
-    print(f"\n--- SERVER STARTING (GROQ) ---")
-    print(f"KEY:   {masked_key}")
-    print(f"MODEL: {GROQ_MODEL}")
-    print(f"------------------------------\n")
-    app.run(debug=True, port=5000)
+if __name__ == "__main__":
+    masked_key = f"{Config.GROQ_API_KEY[:6]}...{Config.GROQ_API_KEY[-4:]}" if Config.GROQ_API_KEY else "NONE"
+    print("\n--- LUMINA AI BACKEND ---")
+    print(f"  Provider : Groq")
+    print(f"  Model    : {Config.GROQ_MODEL}")
+    print(f"  API Key  : {masked_key}")
+    print(f"  Endpoint : http://localhost:{Config.PORT}/api/chat")
+    print(f"  Health   : http://localhost:{Config.PORT}/api/health")
+    print("-------------------------\n")
+    app.run(debug=Config.DEBUG, port=Config.PORT)

@@ -1,14 +1,10 @@
-"""
-config.py - Centralized configuration loaded from .env
-All environment variables are read once here and used throughout the app.
-"""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Path to this file's directory (backend/app/)
+# Path to this file's directory (backend/)
 BASE_DIR = Path(__file__).parent
 
 def _load_system_prompt() -> str:
@@ -25,14 +21,14 @@ class Config:
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     GROQ_API_URL: str = "https://api.groq.com/openai/v1/chat/completions"
 
-    # System Prompt — loaded from app/prompts/system.txt
+    # System Prompt 
     SYSTEM_PROMPT: str = _load_system_prompt()
 
     # Flask Settings
     DEBUG: bool = os.getenv("FLASK_DEBUG", "true").lower() == "true"
     PORT: int = int(os.getenv("PORT", 5000))
 
-    # Memory — max user+bot message pairs to remember per session (RAM only)
+    # Memory
     MAX_HISTORY: int = int(os.getenv("MAX_HISTORY", "20"))
 
     @classmethod
