@@ -718,3 +718,62 @@ def topic_info():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@chat_bp.route("/cheat-sheet", methods=["POST"])
+def cheat_sheet():
+    """
+    POST /api/cheat-sheet
+    Request body: { "messages": [{"role": "user", "text": "..."}, ...] }
+    Response: { "markdown": "# Study Guide\n..." }
+    """
+    data = request.get_json()
+    if not data or "messages" not in data:
+        return jsonify({"error": "Missing 'messages' field."}), 400
+
+    messages = data["messages"]
+    
+    # We want Groq to turn these messages into a Markdown cheat sheet
+    system_prompt = (
+        "You are an expert educational AI. The user will provide a transcript of a recent chat. "
+        "Your job is to condense this conversation into a beautifully structured, highly readable Markdown Study Guide / Cheat Sheet. "
+        "Use bolding, bullet points, headers, and code blocks where appropriate. "
+        "Focus on the core concepts, facts, and examples discussed. "
+        "Do NOT include greetings or meta-conversation. "
+        "Just output the pure Markdown text."
+    )
+    
+    user_context = ""
+    for msg in messages[-15:]: # Take at most last 15 messages so we don't blow up context
+        role = msg.get("role", "unknown")
+        text = msg.get("text", "")
+        if text:
+            user_context += f"{role.upper()}: {text}\n"
+
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {Config.GROQ_API_KEY}",
+        }
+        payload = {
+            "model": Config.GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": f"Here is the chat transcript:\n\n{user_context}"},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 2000,
+        }
+
+        response = requests.post(Config.GROQ_API_URL, headers=headers, json=payload, timeout=30)
+        
+        if not response.ok:
+            error_msg = response.json().get("error", {}).get("message", "Groq API error")
+            return jsonify({"error": f"{response.status_code} {error_msg}"}), response.status_code
+        
+        reply = response.json()["choices"][0]["message"]["content"].strip()
+        return jsonify({"markdown": reply})
+        
+    except requests.Timeout:
+        return jsonify({"error": "Request timed out."}), 504
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
