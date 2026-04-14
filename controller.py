@@ -623,5 +623,98 @@ def health():
         "status": "healthy",
         "provider": "Groq",
         "model": Config.GROQ_MODEL,
-        "streaming": True,   # v2.0
+        "streaming": True,
     })
+
+
+@chat_bp.route("/topic-info", methods=["POST"])
+def topic_info():
+    """
+    POST /api/topic-info
+    Request body: { "topic": "Gradient Descent", "subject": "Machine Learning" }
+    Response: {
+        "explanation": "...",   — 2-3 sentence plain-English explanation
+        "example": "...",       — a concrete, relatable example
+        "sources": [{"title": "...", "url": "..."}]  — web search results
+    }
+    Used by the Roadmap UI when a user taps a topic to see a quick overview.
+    """
+    data = request.get_json()
+    if not data or "topic" not in data:
+        return jsonify({"error": "Missing 'topic' field."}), 400
+
+    topic = data["topic"].strip()
+    subject = data.get("subject", "general").strip()
+
+    # ── Step 1: DuckDuckGo search for real context ──────────────
+    sources = []
+    web_context = ""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = ddgs.text(f"{topic} {subject} explanation example", max_results=4, backend="lite")
+            if results:
+                for r in results:
+                    title = r.get("title", "")
+                    body  = r.get("body", "")
+                    url   = r.get("href", "#")
+                    if title:
+                        sources.append({"title": title, "url": url})
+                    if body:
+                        web_context += f"- {title}: {body}\n"
+    except Exception as e:
+        print(f"[topic-info] DuckDuckGo error: {e}")
+
+    # ── Step 2: Ask Groq for a clean explanation + example ───────
+    system_prompt = (
+        "You are a brilliant teacher. Given a topic and optional web search context, "
+        "respond ONLY with valid JSON in this exact format:\n"
+        "{\n"
+        "  \"explanation\": \"2-3 sentence plain-English explanation of the concept\",\n"
+        "  \"example\": \"A concrete, real-world or code example that illustrates the concept\"\n"
+        "}\n"
+        "Be concise, accurate, and beginner-friendly. Do NOT add anything outside the JSON."
+    )
+
+    user_message = f"Topic: {topic}\nSubject area: {subject}\n"
+    if web_context:
+        user_message += f"\nWeb search context:\n{web_context}"
+
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {Config.GROQ_API_KEY}",
+        }
+        payload = {
+            "model": Config.GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_message},
+            ],
+            "temperature": 0.5,
+            "max_tokens": 400,
+            "response_format": {"type": "json_object"},
+        }
+
+        response = requests.post(Config.GROQ_API_URL, headers=headers, json=payload, timeout=20)
+
+        if not response.ok:
+            error_msg = response.json().get("error", {}).get("message", "Groq API error")
+            return jsonify({"error": f"{response.status_code} {error_msg}"}), response.status_code
+
+        raw = response.json()["choices"][0]["message"]["content"].strip()
+        parsed = json_lib.loads(raw)
+
+        return jsonify({
+            "explanation": parsed.get("explanation", ""),
+            "example":     parsed.get("example", ""),
+            "sources":     sources[:3],  # max 3 sources shown
+        })
+
+    except json_lib.JSONDecodeError:
+        return jsonify({"error": "Failed to parse topic explanation from AI."}), 500
+    except requests.Timeout:
+        return jsonify({"error": "Request timed out."}), 504
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
