@@ -444,8 +444,10 @@ def suggest():
 def mcq():
     """
     POST /api/mcq
-    Request body: { "prompt": "Give me 5 MCQ on Python" }
+    Request body: { "prompt": "Give me 5 MCQ on Python", "session_id": "..." }
     Response:     { "mcq": true, "title": "...", "questions": [...] }
+    Now context-aware: injects conversation history so the AI understands
+    vague references like 'that topic we discussed'.
     """
     data = request.get_json()
     if not data or "prompt" not in data:
@@ -455,6 +457,9 @@ def mcq():
     if not prompt:
         return jsonify({"error": "Prompt cannot be empty."}), 400
 
+    session_id = data.get("session_id", "default")
+    history    = get_history(session_id)   # ← fetch conversation context
+
     num_match = re.search(r'(\d+)', prompt)
     num_questions = int(num_match.group(1)) if num_match else 10
     num_questions = max(2, min(num_questions, 20))
@@ -462,6 +467,7 @@ def mcq():
     mcq_system_prompt = f"""You are an exam generator. You MUST output ONLY valid JSON — no extra text, no markdown.
 
 Generate exactly {num_questions} multiple-choice questions based on the user's topic.
+If the user refers to a previous topic or conversation, use the conversation history provided to identify the topic.
 
 Output this exact JSON structure:
 {{
@@ -490,12 +496,15 @@ RULES:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {Config.GROQ_API_KEY}",
         }
+        # Build messages: system → conversation history → current MCQ request
+        messages = [
+            {"role": "system", "content": mcq_system_prompt},
+            *history,
+            {"role": "user", "content": prompt},
+        ]
         payload = {
             "model": Config.GROQ_MODEL,
-            "messages": [
-                {"role": "system", "content": mcq_system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "temperature": 0.6,
             "max_tokens": 4000,
             "response_format": {"type": "json_object"},
@@ -534,7 +543,9 @@ RULES:
 def flashcards():
     """
     POST /api/flashcards
-    Request body: { "prompt": "Generate flashcards on Python decorators" }
+    Request body: { "prompt": "Generate flashcards on Python decorators", "session_id": "..." }
+    Now context-aware: injects conversation history so the AI understands
+    vague references like 'that topic we discussed'.
     """
     data = request.get_json()
     if not data or "prompt" not in data:
@@ -544,6 +555,9 @@ def flashcards():
     if not prompt:
         return jsonify({"error": "Prompt cannot be empty."}), 400
 
+    session_id = data.get("session_id", "default")
+    history    = get_history(session_id)   # ← fetch conversation context
+
     num_match = re.search(r'(\d+)', prompt)
     num_cards = int(num_match.group(1)) if num_match else 8
     num_cards = max(4, min(num_cards, 20))
@@ -551,6 +565,7 @@ def flashcards():
     flashcard_system_prompt = f"""You are a spaced-repetition flashcard expert. You MUST output ONLY valid JSON.
 
 Generate exactly {num_cards} flashcards on the user's topic.
+If the user refers to a previous topic or conversation, use the conversation history provided to identify the topic.
 
 Output this exact JSON structure:
 {{
@@ -576,12 +591,15 @@ RULES:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {Config.GROQ_API_KEY}",
         }
+        # Build messages: system → conversation history → current flashcard request
+        messages = [
+            {"role": "system", "content": flashcard_system_prompt},
+            *history,
+            {"role": "user", "content": prompt},
+        ]
         payload = {
             "model": Config.GROQ_MODEL,
-            "messages": [
-                {"role": "system", "content": flashcard_system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "temperature": 0.65,
             "max_tokens": 4000,
             "response_format": {"type": "json_object"},
